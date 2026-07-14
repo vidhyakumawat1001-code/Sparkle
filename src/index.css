@@ -1,17 +1,30 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", serif;
-  
-  --color-brand-pink: #FFB6C1;
-  --color-brand-rose: #D946EF;
-  --color-brand-blush: #FFF0F5;
-  --color-baby-pink: #FFD1DC;
-  --color-pastel-pink: #FFF0F5;
-  --color-hot-pink: #FF69B4;
-  --color-gold-accent: #D4AF37;
+
+  /* Core brand palette: warm ivory canvas, deep aubergine ink, muted rosewood accent, antique gold */
+  --color-brand-pink: #D9A9A6;
+  --color-brand-rose: #A8465F;
+  --color-brand-blush: #F6E9E5;
+  --color-baby-pink: #DCB4AE;
+  --color-pastel-pink: #F6E9E5;
+  --color-hot-pink: #9B3F58;
+  --color-gold-accent: #BFA046;
+
+  /* Muted dusty-rose scale, replacing Tailwind's default vivid pink palette site-wide */
+  --color-pink-50: #FBF5F3;
+  --color-pink-100: #F4E6E2;
+  --color-pink-200: #E9D2CC;
+  --color-pink-300: #DAB3AC;
+  --color-pink-400: #C68F89;
+  --color-pink-500: #AD6D6C;
+  --color-pink-600: #93524F;
+  --color-pink-700: #763E3C;
+  --color-pink-800: #582D2C;
+  --color-pink-900: #3B1E1F;
 }
 
 @layer base {
@@ -20,11 +33,11 @@
   }
 
   body {
-    @apply bg-[#FFF5F6] text-zinc-800 font-sans antialiased;
+    @apply bg-[#FAF5F1] text-zinc-800 font-sans antialiased;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-serif text-zinc-900;
+    @apply font-serif text-zinc-900 tracking-tight;
   }
 }
 
@@ -33,11 +46,11 @@
 }
 
 .pink-gradient {
-  background: linear-gradient(135deg, #FFF0F5 0%, #FFD1DC 50%, #FFB6C1 100%);
+  background: linear-gradient(135deg, #F6E9E5 0%, #E9D2CC 50%, #D9A9A6 100%);
 }
 
 .dark-gradient {
-  background: linear-gradient(135deg, #2D142C 0%, #130012 100%);
+  background: linear-gradient(135deg, #241329 0%, #170a1a 100%);
 }
 
 .sparkle-button {
@@ -46,7 +59,7 @@
 
 .sparkle-button::after {
   content: '';
-  @apply absolute inset-0 opacity-0 transition-opacity bg-gradient-to-r from-white/20 to-transparent;
+  @apply absolute inset-0 opacity-0 transition-opacity bg-gradient-to-r from-white/15 to-transparent;
 }
 
 .sparkle-button:hover::after {

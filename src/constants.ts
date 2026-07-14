@@ -1,3 +1,8 @@
+// Client-side-only admin gate password. See the note in App.tsx (requestAdminAccess)
+// for why this does not provide real security and should be replaced with a
+// server-side login before this store handles real products/orders.
+export const ADMIN_PASSWORD = 'sparkle-admin-2026';
+
 export interface Product {
   id: string;
   name: string;
@@ -119,4 +124,3 @@ export const PRODUCTS: Product[] = [
     isNew: true
   }
 ];
-

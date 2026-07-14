@@ -25,7 +25,7 @@ import {
   Truck,
   RotateCcw
 } from 'lucide-react';
-import { PRODUCTS, Product } from './constants';
+import { PRODUCTS, Product, ADMIN_PASSWORD } from './constants';
 import AdminPanel from './components/AdminPanel';
 import HeroCarousel from './components/HeroCarousel';
 import VanityMatchmaker from './components/VanityMatchmaker';
@@ -46,10 +46,25 @@ export default function App() {
   });
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAdminAuthed, setIsAdminAuthed] = useState(() => sessionStorage.getItem('sparkle_admin_authed') === 'true');
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminLoginError, setAdminLoginError] = useState('');
   const [activeTab, setActiveTab] = useState<'All' | 'Skincare' | 'Makeup' | 'Body Care'>('All');
+  const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest'>('featured');
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    const saved = localStorage.getItem('sparkle_favorites');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [];
+  });
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
@@ -63,22 +78,25 @@ export default function App() {
   const [checkoutStep, setCheckoutStep] = useState<'shipping' | 'payment' | 'confirmation' | 'success'>('shipping');
   const [selectedPayment, setSelectedPayment] = useState<'card' | 'paypal' | 'upi' | 'applepay'>('card');
   
-  // Checkout form states
+  // Checkout form states (left blank so we don't ship a stranger's fake identity by default)
   const [shippingForm, setShippingForm] = useState({
-    name: 'Vidhya Kumawat',
-    email: 'vidhyakumawat1001@gmail.com',
-    address: '102 Sparkle Luxury Avenue',
-    city: 'Mumbai',
-    zip: '400001',
-    phone: '+91 98765 43210'
+    name: '',
+    email: '',
+    address: '',
+    city: '',
+    zip: '',
+    phone: ''
   });
 
   const [paymentForm, setPaymentForm] = useState({
-    cardNumber: '4111 2222 3333 4444',
-    expiry: '12/28',
-    cvv: '123',
-    upiId: 'vidhya@paytm'
+    cardNumber: '',
+    expiry: '',
+    cvv: '',
+    upiId: ''
   });
+
+  const [shippingErrors, setShippingErrors] = useState<Record<string, string>>({});
+  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
 
   const [orderId, setOrderId] = useState('');
 
@@ -86,6 +104,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('sparkle_products', JSON.stringify(products));
   }, [products]);
+
+  // Save favorites/wishlist to local storage
+  useEffect(() => {
+    localStorage.setItem('sparkle_favorites', JSON.stringify(favorites));
+  }, [favorites]);
 
   // Product Admin handlers
   const handleAddProduct = (newProduct: Product) => {
@@ -121,6 +144,42 @@ export default function App() {
     setProducts(PRODUCTS);
     setNotification("Catalog restored to premium originals.");
     setCart([]);
+  };
+
+  // --- Admin access control ---
+  // NOTE: This is a client-side-only gate meant to stop casual/accidental access
+  // (e.g. someone clicking the Admin button). It is NOT real security: anyone who
+  // reads the bundled JS can find ADMIN_PASSWORD. For a real deployment, move
+  // product management behind a server with proper authentication (sessions,
+  // hashed passwords, etc.) instead of trusting the browser.
+  const requestAdminAccess = () => {
+    if (isAdminAuthed) {
+      setIsAdminOpen(true);
+    } else {
+      setAdminPasswordInput('');
+      setAdminLoginError('');
+      setIsAdminLoginOpen(true);
+    }
+  };
+
+  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPasswordInput === ADMIN_PASSWORD) {
+      setIsAdminAuthed(true);
+      sessionStorage.setItem('sparkle_admin_authed', 'true');
+      setIsAdminLoginOpen(false);
+      setIsAdminOpen(true);
+      setAdminPasswordInput('');
+      setAdminLoginError('');
+    } else {
+      setAdminLoginError('Incorrect password. Please try again.');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminAuthed(false);
+    sessionStorage.removeItem('sparkle_admin_authed');
+    setIsAdminOpen(false);
   };
 
   // Auto-dismiss notification toast
@@ -249,12 +308,74 @@ export default function App() {
 
   const submitShipping = (e: React.FormEvent) => {
     e.preventDefault();
-    setCheckoutStep('payment');
+    const errors: Record<string, string> = {};
+
+    if (!shippingForm.name.trim()) errors.name = 'Please enter your full name.';
+
+    if (!shippingForm.email.trim()) {
+      errors.email = 'Please enter your email.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shippingForm.email)) {
+      errors.email = 'Please enter a valid email address.';
+    }
+
+    if (!shippingForm.address.trim()) errors.address = 'Please enter your shipping address.';
+    if (!shippingForm.city.trim()) errors.city = 'Please enter your city.';
+
+    if (!shippingForm.zip.trim()) {
+      errors.zip = 'Please enter your ZIP / postal code.';
+    } else if (!/^[A-Za-z0-9\- ]{3,10}$/.test(shippingForm.zip.trim())) {
+      errors.zip = 'Please enter a valid ZIP / postal code.';
+    }
+
+    if (!shippingForm.phone.trim()) {
+      errors.phone = 'Please enter your phone number.';
+    } else if (!/^[+\d][\d\s\-()]{6,}$/.test(shippingForm.phone.trim())) {
+      errors.phone = 'Please enter a valid phone number.';
+    }
+
+    setShippingErrors(errors);
+    if (Object.keys(errors).length === 0) {
+      setCheckoutStep('payment');
+    }
   };
 
   const submitPayment = (e: React.FormEvent) => {
     e.preventDefault();
-    setCheckoutStep('confirmation');
+    const errors: Record<string, string> = {};
+
+    if (selectedPayment === 'card') {
+      const digitsOnly = paymentForm.cardNumber.replace(/\s+/g, '');
+      if (!digitsOnly) {
+        errors.cardNumber = 'Please enter your card number.';
+      } else if (!/^\d{13,19}$/.test(digitsOnly)) {
+        errors.cardNumber = 'Card number should be 13-19 digits.';
+      }
+
+      if (!paymentForm.expiry.trim()) {
+        errors.expiry = 'Please enter the expiry date.';
+      } else if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(paymentForm.expiry.trim())) {
+        errors.expiry = 'Use MM/YY format.';
+      }
+
+      if (!paymentForm.cvv.trim()) {
+        errors.cvv = 'Please enter the CVV.';
+      } else if (!/^\d{3,4}$/.test(paymentForm.cvv.trim())) {
+        errors.cvv = 'CVV should be 3-4 digits.';
+      }
+    }
+
+    if (selectedPayment === 'upi') {
+      if (!paymentForm.upiId.trim()) {
+        errors.upiId = 'Please enter your UPI ID.';
+      } else if (!/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(paymentForm.upiId.trim())) {
+        errors.upiId = 'Please enter a valid UPI ID (e.g. name@bank).';
+      }
+    }
+
+    setPaymentErrors(errors);
+    if (Object.keys(errors).length === 0) {
+      setCheckoutStep('confirmation');
+    }
   };
 
   const placeOrder = () => {
@@ -272,12 +393,28 @@ export default function App() {
     return matchesSearch && matchesCategory;
   });
 
+  // Apply sort on top of the filtered results (a copy, so we don't mutate state order)
+  const sortedFilteredProducts = [...filteredProductsBySearch].sort((a, b) => {
+    switch (sortBy) {
+      case 'price-asc':
+        return a.price - b.price;
+      case 'price-desc':
+        return b.price - a.price;
+      case 'rating':
+        return b.rating - a.rating;
+      case 'newest':
+        return (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0);
+      default:
+        return 0; // 'featured' keeps the catalog's natural order
+    }
+  });
+
   return (
-    <div className="min-h-screen bg-[#FFF5F6] selection:bg-brand-pink selection:text-zinc-950 text-zinc-800 font-sans antialiased overflow-x-hidden">
+    <div className="min-h-screen bg-[#FAF5F1] selection:bg-brand-pink selection:text-zinc-950 text-zinc-800 font-sans antialiased overflow-x-hidden">
       
       {/* Promo banner at the top */}
-      <div className="bg-[#1A0917] text-[#FFF0F5] text-center text-xs py-2 tracking-widest font-medium">
-        ✨ MID-SUMMER BEAUTY SALE: EXTRA 20% OFF ALL PRODUCTS | FREE SHIPPING ON ORDERS OVER $50 ✨
+      <div className="bg-[#1A0E1D] text-[#F6E9E5] text-center text-[11px] py-2.5 tracking-[0.15em] font-medium border-b border-[#BFA046]/30">
+        Mid-Summer Beauty Edit — an extra 20% off, complimentary shipping over $50
       </div>
 
       {/* Sticky Header */}
@@ -290,7 +427,9 @@ export default function App() {
         setIsSearchOpen={setIsSearchOpen}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onAdminOpen={() => setIsAdminOpen(true)}
+        onAdminOpen={requestAdminAccess}
+        isAdminAuthed={isAdminAuthed}
+        onAdminLogout={handleAdminLogout}
       />
 
       {/* Main Sections */}
@@ -303,9 +442,9 @@ export default function App() {
               initial={{ opacity: 0, y: -50, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-[#2D142C] text-[#FFF0F5] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-pink-400/30 font-medium text-sm"
+              className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-[#241329] text-[#F6E9E5] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-pink-400/30 font-medium text-sm"
             >
-              <Sparkles className="w-4 h-4 text-[#FFD1DC] animate-pulse" />
+              <Sparkles className="w-4 h-4 text-[#DCB4AE] animate-pulse" />
               <span>{notification}</span>
             </motion.div>
           )}
@@ -324,7 +463,7 @@ export default function App() {
         }} />
 
         {/* Filterable Products Showcase */}
-        <section id="featured" className="py-24 bg-[#FFF5F6] scroll-mt-24">
+        <section id="featured" className="py-24 bg-[#FAF5F1] scroll-mt-24">
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center max-w-xl mx-auto mb-16">
               <span className="text-hot-pink font-semibold tracking-widest uppercase text-xs mb-3 block">Luxurious Formulas</span>
@@ -336,7 +475,7 @@ export default function App() {
             </div>
 
             {/* Sticky/Interactive Tab Control */}
-            <div className="flex flex-wrap justify-center gap-2 md:gap-4 mb-12">
+            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mb-4">
               {(['All', 'Skincare', 'Makeup', 'Body Care'] as const).map((tab) => (
                 <button
                   key={tab}
@@ -352,8 +491,26 @@ export default function App() {
               ))}
             </div>
 
+            {/* Sort Control */}
+            <div className="flex justify-center md:justify-end mb-8">
+              <label className="flex items-center gap-2 text-xs">
+                <span className="text-zinc-400 font-semibold uppercase tracking-widest text-[10px]">Sort by</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                  className="px-3 py-2 rounded-full border border-pink-100 bg-white text-zinc-700 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-hot-pink"
+                >
+                  <option value="featured">Featured</option>
+                  <option value="price-asc">Price: Low to High</option>
+                  <option value="price-desc">Price: High to Low</option>
+                  <option value="rating">Highest Rated</option>
+                  <option value="newest">Newest</option>
+                </select>
+              </label>
+            </div>
+
             {/* Products Grid */}
-            {filteredProductsBySearch.length === 0 ? (
+            {sortedFilteredProducts.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl p-8 shadow-sm">
                 <Info className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
                 <h3 className="text-xl font-serif mb-2">No Products Found</h3>
@@ -361,7 +518,7 @@ export default function App() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-                {filteredProductsBySearch.map((product) => {
+                {sortedFilteredProducts.map((product) => {
                   const discountPct = Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
                   const isFav = favorites.includes(product.id);
                   return (
@@ -388,7 +545,7 @@ export default function App() {
                         
                         {/* Interactive floating elements */}
                         <div className="absolute top-4 left-4 flex flex-col gap-2">
-                          <span className="bg-[#2D142C] text-[#FFF0F5] text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm">
+                          <span className="bg-[#241329] text-[#F6E9E5] text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm">
                             {discountPct}% OFF
                           </span>
                           {product.isBestSeller && (
@@ -423,7 +580,7 @@ export default function App() {
                               setSelectedProductForDetail(product);
                               setIsQuickViewOpen(true);
                             }}
-                            className="flex-1 py-3 bg-white text-[#2D142C] hover:bg-[#2D142C] hover:text-white transition-all text-[10px] font-bold uppercase tracking-widest rounded-2xl shadow-xl"
+                            className="flex-1 py-3 bg-white text-[#241329] hover:bg-[#241329] hover:text-white transition-all text-[10px] font-bold uppercase tracking-widest rounded-2xl shadow-xl"
                           >
                             Quick View
                           </button>
@@ -432,7 +589,7 @@ export default function App() {
                               e.stopPropagation();
                               addToCart(product);
                             }}
-                            className="flex-1 py-3 bg-[#2D142C] text-[#FFF0F5] hover:bg-hot-pink hover:text-white transition-all text-[10px] font-bold uppercase tracking-widest rounded-2xl shadow-xl flex items-center justify-center gap-1.5"
+                            className="flex-1 py-3 bg-[#241329] text-[#F6E9E5] hover:bg-hot-pink hover:text-white transition-all text-[10px] font-bold uppercase tracking-widest rounded-2xl shadow-xl flex items-center justify-center gap-1.5"
                           >
                             <ShoppingBag className="w-3.5 h-3.5" /> Add
                           </button>
@@ -454,7 +611,7 @@ export default function App() {
                             </h3>
                           </div>
                           <div className="flex items-center gap-1 bg-pink-50 px-2 py-1 rounded-lg">
-                            <Star className="w-3.5 h-3.5 fill-[#D4AF37] text-[#D4AF37]" />
+                            <Star className="w-3.5 h-3.5 fill-[#BFA046] text-[#BFA046]" />
                             <span className="text-xs font-semibold text-zinc-800">{product.rating}</span>
                           </div>
                         </div>
@@ -468,7 +625,7 @@ export default function App() {
                           </div>
                           <button 
                             onClick={() => addToCart(product)}
-                            className="text-xs font-bold text-hot-pink hover:text-[#2D142C] tracking-wider uppercase flex items-center gap-1 transition-colors"
+                            className="text-xs font-bold text-hot-pink hover:text-[#241329] tracking-wider uppercase flex items-center gap-1 transition-colors"
                           >
                             Add To Bag <Plus className="w-3.5 h-3.5" />
                           </button>
@@ -498,9 +655,9 @@ export default function App() {
 
       <Footer />
 
-      {/* Admin Panel Overlay */}
+      {/* Admin Panel Overlay - only reachable after passing the password gate */}
       <AdminPanel 
-        isOpen={isAdminOpen}
+        isOpen={isAdminOpen && isAdminAuthed}
         onClose={() => setIsAdminOpen(false)}
         products={products}
         onAddProduct={handleAddProduct}
@@ -508,6 +665,60 @@ export default function App() {
         onDeleteProduct={handleDeleteProduct}
         onResetProducts={handleResetProducts}
       />
+
+      {/* Admin Login Gate */}
+      <AnimatePresence>
+        {isAdminLoginOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={() => setIsAdminLoginOpen(false)}
+          >
+            <motion.form
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={handleAdminLoginSubmit}
+              className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl"
+            >
+              <div className="flex items-center gap-2 mb-1 text-hot-pink">
+                <ShieldCheck className="w-5 h-5" />
+                <h3 className="text-lg font-serif text-zinc-950 font-bold">Admin Access</h3>
+              </div>
+              <p className="text-xs text-zinc-500 mb-5">Enter the admin password to manage the product catalog.</p>
+              <input
+                autoFocus
+                type="password"
+                value={adminPasswordInput}
+                onChange={(e) => setAdminPasswordInput(e.target.value)}
+                placeholder="Admin password"
+                className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10 mb-2"
+              />
+              {adminLoginError && (
+                <p className="text-xs text-red-500 font-semibold mb-2">{adminLoginError}</p>
+              )}
+              <div className="flex gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsAdminLoginOpen(false)}
+                  className="flex-1 py-3 border border-pink-200 hover:bg-pink-50 rounded-full text-xs font-semibold uppercase tracking-widest text-zinc-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-hot-pink text-white hover:bg-zinc-900 rounded-full text-xs font-semibold uppercase tracking-widest"
+                >
+                  Unlock
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Premium detailed Quick View Modal overlay */}
       <QuickViewModal 
@@ -531,7 +742,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsCartOpen(false)}
-              className="absolute inset-0 bg-[#2D142C]/50 backdrop-blur-sm"
+              className="absolute inset-0 bg-[#241329]/50 backdrop-blur-sm"
             />
 
             <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
@@ -575,7 +786,7 @@ export default function App() {
                           setIsCartOpen(false);
                           handleShopNowClick();
                         }}
-                        className="px-8 py-3.5 bg-hot-pink text-white hover:bg-[#2D142C] transition-colors rounded-full font-medium text-xs tracking-widest uppercase"
+                        className="px-8 py-3.5 bg-hot-pink text-white hover:bg-[#241329] transition-colors rounded-full font-medium text-xs tracking-widest uppercase"
                       >
                         Start Shopping
                       </button>
@@ -656,7 +867,7 @@ export default function App() {
 
                     <button 
                       onClick={startCheckout}
-                      className="w-full py-4 bg-hot-pink text-white hover:bg-[#2D142C] transition-all rounded-full font-semibold tracking-widest text-xs uppercase flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
+                      className="w-full py-4 bg-hot-pink text-white hover:bg-[#241329] transition-all rounded-full font-semibold tracking-widest text-xs uppercase flex items-center justify-center gap-2 shadow-lg shadow-pink-200"
                     >
                       Proceed to Checkout <ArrowRight className="w-4 h-4" />
                     </button>
@@ -680,7 +891,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsCheckoutOpen(false)}
-              className="fixed inset-0 bg-[#2D142C]/60 backdrop-blur-sm"
+              className="fixed inset-0 bg-[#241329]/60 backdrop-blur-sm"
             />
 
             <motion.div 
@@ -731,68 +942,68 @@ export default function App() {
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">Full Name</label>
                       <input 
-                        required
                         type="text" 
                         value={shippingForm.name}
                         onChange={(e) => setShippingForm({ ...shippingForm, name: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10"
+                        className={`w-full px-4 py-3 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-2 ${shippingErrors.name ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                       />
+                      {shippingErrors.name && <p className="text-[11px] text-red-500 mt-1">{shippingErrors.name}</p>}
                     </div>
 
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">Email Address</label>
                       <input 
-                        required
                         type="email" 
                         value={shippingForm.email}
                         onChange={(e) => setShippingForm({ ...shippingForm, email: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10"
+                        className={`w-full px-4 py-3 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-2 ${shippingErrors.email ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                       />
+                      {shippingErrors.email && <p className="text-[11px] text-red-500 mt-1">{shippingErrors.email}</p>}
                     </div>
 
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">Shipping Address</label>
                       <input 
-                        required
                         type="text" 
                         value={shippingForm.address}
                         onChange={(e) => setShippingForm({ ...shippingForm, address: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10"
+                        className={`w-full px-4 py-3 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-2 ${shippingErrors.address ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                       />
+                      {shippingErrors.address && <p className="text-[11px] text-red-500 mt-1">{shippingErrors.address}</p>}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">City</label>
                         <input 
-                          required
                           type="text" 
                           value={shippingForm.city}
                           onChange={(e) => setShippingForm({ ...shippingForm, city: e.target.value })}
-                          className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10"
+                          className={`w-full px-4 py-3 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-2 ${shippingErrors.city ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                         />
+                        {shippingErrors.city && <p className="text-[11px] text-red-500 mt-1">{shippingErrors.city}</p>}
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">ZIP / Postal Code</label>
                         <input 
-                          required
                           type="text" 
                           value={shippingForm.zip}
                           onChange={(e) => setShippingForm({ ...shippingForm, zip: e.target.value })}
-                          className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10"
+                          className={`w-full px-4 py-3 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-2 ${shippingErrors.zip ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                         />
+                        {shippingErrors.zip && <p className="text-[11px] text-red-500 mt-1">{shippingErrors.zip}</p>}
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">Phone Number</label>
                       <input 
-                        required
                         type="text" 
                         value={shippingForm.phone}
                         onChange={(e) => setShippingForm({ ...shippingForm, phone: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl border border-pink-100 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm bg-pink-50/10"
+                        className={`w-full px-4 py-3 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-2 ${shippingErrors.phone ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                       />
+                      {shippingErrors.phone && <p className="text-[11px] text-red-500 mt-1">{shippingErrors.phone}</p>}
                     </div>
 
                     <button 
@@ -846,35 +1057,36 @@ export default function App() {
                         <div>
                           <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Card Number</label>
                           <input 
-                            required
                             type="text" 
+                            placeholder="1234 5678 9012 3456"
                             value={paymentForm.cardNumber}
                             onChange={(e) => setPaymentForm({ ...paymentForm, cardNumber: e.target.value })}
-                            className="w-full px-4 py-2.5 rounded-xl border border-pink-100 text-sm bg-pink-50/10 focus:outline-none focus:ring-1 focus:ring-hot-pink"
+                            className={`w-full px-4 py-2.5 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-1 ${paymentErrors.cardNumber ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                           />
+                          {paymentErrors.cardNumber && <p className="text-[11px] text-red-500 mt-1">{paymentErrors.cardNumber}</p>}
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Expiry Date</label>
                             <input 
-                              required
                               type="text" 
                               placeholder="MM/YY"
                               value={paymentForm.expiry}
                               onChange={(e) => setPaymentForm({ ...paymentForm, expiry: e.target.value })}
-                              className="w-full px-4 py-2.5 rounded-xl border border-pink-100 text-sm bg-pink-50/10 focus:outline-none focus:ring-1 focus:ring-hot-pink"
+                              className={`w-full px-4 py-2.5 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-1 ${paymentErrors.expiry ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                             />
+                            {paymentErrors.expiry && <p className="text-[11px] text-red-500 mt-1">{paymentErrors.expiry}</p>}
                           </div>
                           <div>
                             <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">CVV / CVC</label>
                             <input 
-                              required
                               type="password" 
-                              maxLength={3}
+                              maxLength={4}
                               value={paymentForm.cvv}
                               onChange={(e) => setPaymentForm({ ...paymentForm, cvv: e.target.value })}
-                              className="w-full px-4 py-2.5 rounded-xl border border-pink-100 text-sm bg-pink-50/10 focus:outline-none focus:ring-1 focus:ring-hot-pink"
+                              className={`w-full px-4 py-2.5 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-1 ${paymentErrors.cvv ? 'border-red-400 focus:ring-red-300' : 'border-pink-100 focus:ring-hot-pink'}`}
                             />
+                            {paymentErrors.cvv && <p className="text-[11px] text-red-500 mt-1">{paymentErrors.cvv}</p>}
                           </div>
                         </div>
                       </div>
@@ -883,7 +1095,7 @@ export default function App() {
                     {selectedPayment === 'paypal' && (
                       <div className="p-4 bg-blue-50/40 rounded-2xl border border-blue-100 text-center space-y-2">
                         <p className="text-xs text-zinc-600">You will be securely redirected to PayPal sandbox to complete this payment.</p>
-                        <span className="text-xs font-bold text-blue-700">vidhyakumawat1001@gmail.com</span>
+                        <span className="text-xs font-bold text-blue-700">checkout@sparkle-cosmetics.example</span>
                       </div>
                     )}
 
@@ -892,16 +1104,16 @@ export default function App() {
                         <div>
                           <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">UPI ID (VPA)</label>
                           <input 
-                            required
                             type="text" 
                             placeholder="username@bank"
                             value={paymentForm.upiId}
                             onChange={(e) => setPaymentForm({ ...paymentForm, upiId: e.target.value })}
-                            className="w-full px-4 py-2.5 rounded-xl border border-[#D946EF]/20 text-sm bg-pink-50/10 focus:outline-none focus:ring-1 focus:ring-hot-pink"
+                            className={`w-full px-4 py-2.5 rounded-xl border text-sm bg-pink-50/10 focus:outline-none focus:ring-1 ${paymentErrors.upiId ? 'border-red-400 focus:ring-red-300' : 'border-[#A8465F]/20 focus:ring-hot-pink'}`}
                           />
+                          {paymentErrors.upiId && <p className="text-[11px] text-red-500 mt-1">{paymentErrors.upiId}</p>}
                         </div>
-                        <div className="p-3 bg-[#FFF5F6] border border-[#FFD1DC] rounded-xl flex items-center gap-3">
-                          <QrCode className="w-8 h-8 text-[#D946EF]" />
+                        <div className="p-3 bg-[#FAF5F1] border border-[#DCB4AE] rounded-xl flex items-center gap-3">
+                          <QrCode className="w-8 h-8 text-[#A8465F]" />
                           <span className="text-[11px] text-zinc-500">Scan QR Code option will be prompt on submit.</span>
                         </div>
                       </div>
@@ -963,7 +1175,7 @@ export default function App() {
                         onClick={placeOrder}
                         className="flex-1 py-3.5 bg-zinc-950 text-white hover:bg-hot-pink rounded-full text-xs font-semibold uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg"
                       >
-                        <Sparkles className="w-4 h-4 text-[#FFD1DC]" /> Complete Checkout
+                        <Sparkles className="w-4 h-4 text-[#DCB4AE]" /> Complete Checkout
                       </button>
                     </div>
                   </div>
@@ -994,7 +1206,7 @@ export default function App() {
 
                     <button 
                       onClick={() => setIsCheckoutOpen(false)}
-                      className="w-full py-4 bg-hot-pink text-white hover:bg-[#2D142C] transition-colors rounded-full text-xs font-semibold uppercase tracking-widest"
+                      className="w-full py-4 bg-hot-pink text-white hover:bg-[#241329] transition-colors rounded-full text-xs font-semibold uppercase tracking-widest"
                     >
                       Continue Exploring Store
                     </button>
@@ -1019,7 +1231,9 @@ function Header({
   setIsSearchOpen,
   searchQuery,
   setSearchQuery,
-  onAdminOpen
+  onAdminOpen,
+  isAdminAuthed,
+  onAdminLogout
 }: { 
   cartItemCount: number; 
   onCartOpen: () => void;
@@ -1030,6 +1244,8 @@ function Header({
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onAdminOpen: () => void;
+  isAdminAuthed: boolean;
+  onAdminLogout: () => void;
 }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1046,7 +1262,7 @@ function Header({
         
         {/* Navigation links & Hamburger menu */}
         <div className="flex items-center gap-8">
-          <button onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden text-[#2D142C] hover:text-hot-pink p-1">
+          <button onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden text-[#241329] hover:text-hot-pink p-1">
             <Menu className="w-6 h-6" />
           </button>
           
@@ -1070,7 +1286,7 @@ function Header({
         {/* Beautiful brand logo */}
         <div className="absolute left-1/2 -translate-x-1/2">
           <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="group">
-            <h1 className="text-3xl md:text-4xl font-serif tracking-widest text-[#2D142C] group-hover:text-hot-pink transition-colors">
+            <h1 className="text-3xl md:text-4xl font-serif tracking-widest text-[#241329] group-hover:text-hot-pink transition-colors">
               SPARKLE
             </h1>
           </a>
@@ -1112,14 +1328,24 @@ function Header({
             <span className="hidden sm:inline">Admin</span>
           </button>
 
+          {isAdminAuthed && (
+            <button
+              onClick={onAdminLogout}
+              className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-hot-pink transition-colors"
+              title="Log out of admin"
+            >
+              Log Out
+            </button>
+          )}
+
           {/* Interactive Shopping Cart Icon Trigger */}
           <button 
             onClick={onCartOpen}
-            className="p-2.5 bg-pink-100/80 hover:bg-pink-100 text-[#2D142C] hover:text-hot-pink rounded-full transition-all relative scale-105"
+            className="p-2.5 bg-pink-100/80 hover:bg-pink-100 text-[#241329] hover:text-hot-pink rounded-full transition-all relative scale-105"
           >
             <ShoppingBag className="w-4.5 h-4.5" />
             {cartItemCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-hot-pink text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-md animate-bounce">
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-hot-pink text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-md">
                 {cartItemCount}
               </span>
             )}
@@ -1136,7 +1362,7 @@ function Header({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-[#2D142C]/40 backdrop-blur-sm z-[100]"
+              className="fixed inset-0 bg-[#241329]/40 backdrop-blur-sm z-[100]"
             />
             <motion.div 
               initial={{ x: '-100%' }}
@@ -1147,7 +1373,7 @@ function Header({
             >
               <div className="space-y-12">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-serif text-[#2D142C] tracking-widest">SPARKLE</h2>
+                  <h2 className="text-2xl font-serif text-[#241329] tracking-widest">SPARKLE</h2>
                   <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-pink-50 rounded-full">
                     <X className="w-5 h-5" />
                   </button>
@@ -1193,8 +1419,8 @@ function Hero({ onShopNowClick }: { onShopNowClick: () => void }) {
           referrerPolicy="no-referrer"
         />
         {/* Soft pink gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FFF5F6] via-[#FFF5F6]/70 to-transparent"></div>
-        <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-[#FFF0F5]/40 to-transparent"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#FAF5F1] via-[#FAF5F1]/70 to-transparent"></div>
+        <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-[#F6E9E5]/40 to-transparent"></div>
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 w-full mt-10">
@@ -1223,14 +1449,14 @@ function Hero({ onShopNowClick }: { onShopNowClick: () => void }) {
           <div className="flex flex-wrap gap-4">
             <button 
               onClick={onShopNowClick}
-              className="px-10 py-4 bg-[#2D142C] text-[#FFF0F5] hover:bg-hot-pink hover:text-white transition-all rounded-full font-medium tracking-wider text-xs uppercase flex items-center gap-2 group shadow-lg shadow-pink-900/10"
+              className="px-10 py-4 bg-[#241329] text-[#F6E9E5] hover:bg-hot-pink hover:text-white transition-all rounded-full font-medium tracking-wider text-xs uppercase flex items-center gap-2 group shadow-lg shadow-pink-900/10"
             >
               Shop Sale Collection
               <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
             <button 
               onClick={onShopNowClick}
-              className="px-10 py-4 border border-[#2D142C] text-zinc-800 hover:bg-[#2D142C] hover:text-white transition-all rounded-full font-medium tracking-wider text-xs uppercase"
+              className="px-10 py-4 border border-[#241329] text-zinc-800 hover:bg-[#241329] hover:text-white transition-all rounded-full font-medium tracking-wider text-xs uppercase"
             >
               Explore Rituals
             </button>
@@ -1264,7 +1490,7 @@ function OfferBanners({ onShopNowClick }: { onShopNowClick: () => void }) {
   ];
 
   return (
-    <section className="py-12 bg-[#FFF5F6]">
+    <section className="py-12 bg-[#FAF5F1]">
       <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-8">
         {offers.map((offer, idx) => (
           <div 
@@ -1298,8 +1524,8 @@ function OfferBanners({ onShopNowClick }: { onShopNowClick: () => void }) {
 
 function CategorySection({ onCategorySelect }: { onCategorySelect: (cat: 'Skincare' | 'Makeup' | 'Body Care') => void }) {
   const categories = [
-    { name: 'Skincare', image: 'https://images.unsplash.com/photo-1570172619380-4197bfd1445b?auto=format&fit=crop&q=80&w=800', color: 'bg-[#FFF0F5]' },
-    { name: 'Makeup', image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800', color: 'bg-[#FFF5F6]' },
+    { name: 'Skincare', image: 'https://images.unsplash.com/photo-1570172619380-4197bfd1445b?auto=format&fit=crop&q=80&w=800', color: 'bg-[#F6E9E5]' },
+    { name: 'Makeup', image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800', color: 'bg-[#FAF5F1]' },
     { name: 'Body Care', image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&q=80&w=800', color: 'bg-pink-50' }
   ] as const;
 
@@ -1332,10 +1558,10 @@ function CategorySection({ onCategorySelect }: { onCategorySelect: (cat: 'Skinca
                 className="w-full h-full object-cover mix-blend-multiply opacity-80 group-hover:scale-105 transition-transform duration-700"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#2D142C]/80 via-transparent to-transparent"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-[#241329]/80 via-transparent to-transparent"></div>
               <div className="absolute bottom-8 left-8 space-y-2">
                 <h3 className="text-2xl md:text-3xl font-serif text-white">{cat.name}</h3>
-                <span className="text-[#FFF0F5]/90 text-xs tracking-widest uppercase flex items-center gap-1.5">
+                <span className="text-[#F6E9E5]/90 text-xs tracking-widest uppercase flex items-center gap-1.5">
                   Explore Collection <ChevronRight className="w-4 h-4 text-brand-pink" />
                 </span>
               </div>
@@ -1355,7 +1581,7 @@ function BrandStory() {
   ];
 
   return (
-    <section className="py-24 bg-[#2D142C] text-[#FFF0F5] overflow-hidden rounded-[50px] my-12 mx-6">
+    <section className="py-24 bg-[#241329] text-[#F6E9E5] overflow-hidden rounded-[50px] my-12 mx-6">
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div className="relative">
@@ -1375,7 +1601,7 @@ function BrandStory() {
               <h2 className="text-4xl md:text-5xl font-serif text-white leading-tight">Beauty that Sparkles from Within</h2>
               <div className="w-12 h-1 bg-hot-pink mt-4"></div>
             </div>
-            <p className="text-[#FFF0F5]/70 text-sm leading-relaxed">
+            <p className="text-[#F6E9E5]/70 text-sm leading-relaxed">
               We founded Sparkle on the simple standard that luxury cosmetics should be clean, vegan, and incredibly glowing. We combine active natural flowers with modern scientific peptide complexes to balance your skin's natural pH and seal in water.
             </p>
             
@@ -1387,13 +1613,13 @@ function BrandStory() {
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-white">{b.title}</h4>
-                    <p className="text-xs text-[#FFF0F5]/50 mt-1">{b.desc}</p>
+                    <p className="text-xs text-[#F6E9E5]/50 mt-1">{b.desc}</p>
                   </div>
                 </div>
               ))}
             </div>
 
-            <button className="px-10 py-4 bg-[#FFD1DC] text-zinc-950 hover:bg-white transition-all rounded-full font-semibold tracking-wider text-xs uppercase shadow-xl">
+            <button className="px-10 py-4 bg-[#DCB4AE] text-zinc-950 hover:bg-white transition-all rounded-full font-semibold tracking-wider text-xs uppercase shadow-xl">
               Our Full Story
             </button>
           </div>
@@ -1416,10 +1642,10 @@ function Newsletter() {
   };
 
   return (
-    <section className="py-24 bg-gradient-to-r from-pink-100 via-[#FFF0F5] to-pink-100">
+    <section className="py-24 bg-gradient-to-r from-pink-100 via-[#F6E9E5] to-pink-100">
       <div className="max-w-3xl mx-auto px-6 text-center space-y-6">
         <span className="text-hot-pink font-bold tracking-widest uppercase text-xs">SPARKLE MEMBERSHIP</span>
-        <h2 className="text-3xl md:text-5xl font-serif text-[#2D142C]">Join the Sparkle Club</h2>
+        <h2 className="text-3xl md:text-5xl font-serif text-[#241329]">Join the Sparkle Club</h2>
         <p className="text-zinc-600 text-sm max-w-lg mx-auto">
           Get customized beauty insights, early product drops, and exclusive secret discounts. Sign up today and save <strong className="text-hot-pink">15% on your first ritual</strong>.
         </p>
@@ -1428,7 +1654,7 @@ function Newsletter() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="p-4 bg-white rounded-2xl max-w-md mx-auto border border-pink-200 text-sm font-medium text-[#2D142C]"
+            className="p-4 bg-white rounded-2xl max-w-md mx-auto border border-pink-200 text-sm font-medium text-[#241329]"
           >
             🎉 Welcome to the Family! Check your inbox for your 15% discount code.
           </motion.div>
@@ -1442,7 +1668,7 @@ function Newsletter() {
               onChange={(e) => setEmail(e.target.value)}
               className="flex-1 px-5 py-3.5 rounded-full bg-white border border-pink-200 focus:outline-none focus:ring-2 focus:ring-hot-pink text-sm shadow-inner"
             />
-            <button className="px-8 py-3.5 bg-[#2D142C] text-[#FFF0F5] hover:bg-hot-pink hover:text-white transition-all rounded-full font-semibold tracking-wider text-xs uppercase shadow-md">
+            <button className="px-8 py-3.5 bg-[#241329] text-[#F6E9E5] hover:bg-hot-pink hover:text-white transition-all rounded-full font-semibold tracking-wider text-xs uppercase shadow-md">
               Subscribe
             </button>
           </form>
@@ -1461,7 +1687,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
           <div className="space-y-6">
-            <h2 className="text-3xl font-serif text-[#2D142C] tracking-widest">SPARKLE</h2>
+            <h2 className="text-3xl font-serif text-[#241329] tracking-widest">SPARKLE</h2>
             <p className="text-zinc-500 text-xs leading-relaxed max-w-xs">
               Formulated to nurture, hydrate, and brighten your vanity space with clean botanical rituals.
             </p>
@@ -1526,12 +1752,12 @@ function StepIndicator({ step, active, completed, label }: { step: number; activ
         completed 
         ? 'bg-green-600 text-white' 
         : active 
-        ? 'bg-[#2D142C] text-[#FFF0F5] scale-110 shadow-md ring-2 ring-pink-200' 
+        ? 'bg-[#241329] text-[#F6E9E5] scale-110 shadow-md ring-2 ring-pink-200' 
         : 'bg-pink-100 text-zinc-500'
       }`}>
         {completed ? <Check className="w-4 h-4" /> : step}
       </div>
-      <span className={`text-xs font-semibold ${active ? 'text-[#2D142C]' : 'text-zinc-400'}`}>{label}</span>
+      <span className={`text-xs font-semibold ${active ? 'text-[#241329]' : 'text-zinc-400'}`}>{label}</span>
     </div>
   );
 }
