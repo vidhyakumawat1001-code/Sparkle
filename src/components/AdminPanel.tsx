@@ -20,6 +20,7 @@ import { Product } from '../constants';
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  onLogout: () => void;
   products: Product[];
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
@@ -79,6 +80,7 @@ const IMAGE_PRESETS = [
 export default function AdminPanel({
   isOpen,
   onClose,
+  onLogout,
   products,
   onAddProduct,
   onUpdateProduct,
@@ -267,7 +269,7 @@ export default function AdminPanel({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-[#2D142C]/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-[#241329]/50 backdrop-blur-sm"
           />
 
           {/* Side Drawer Panel */}
@@ -279,7 +281,7 @@ export default function AdminPanel({
             className="relative w-screen max-w-2xl bg-white shadow-2xl flex flex-col h-full z-10 border-l border-pink-100"
           >
             {/* Header */}
-            <div className="px-6 py-5 bg-[#1A0917] text-[#FFF0F5] flex justify-between items-center shadow-md">
+            <div className="px-6 py-5 bg-[#1A0E1D] text-[#F6E9E5] flex justify-between items-center shadow-md">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-hot-pink flex items-center justify-center shadow-lg">
                   <Sparkles className="w-4 h-4 text-white" />
@@ -289,12 +291,21 @@ export default function AdminPanel({
                   <p className="text-[10px] text-pink-200/80 tracking-widest uppercase">Luxury Catalog Portal</p>
                 </div>
               </div>
-              <button 
-                onClick={onClose}
-                className="p-2 text-pink-100 hover:bg-pink-900/40 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={onLogout}
+                  className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-pink-100 hover:bg-pink-900/40 rounded-full transition-colors"
+                  title="Log out of admin"
+                >
+                  Log Out
+                </button>
+                <button 
+                  onClick={onClose}
+                  className="p-2 text-pink-100 hover:bg-pink-900/40 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Sub-tabs selection */}
@@ -303,7 +314,7 @@ export default function AdminPanel({
                 onClick={() => { setActiveTab('add'); setFormError(''); }}
                 className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all ${
                   activeTab === 'add'
-                  ? 'bg-[#2D142C] text-white shadow-sm'
+                  ? 'bg-[#241329] text-white shadow-sm'
                   : 'text-zinc-600 hover:bg-pink-100/40'
                 }`}
               >
@@ -313,7 +324,7 @@ export default function AdminPanel({
                 onClick={() => { setActiveTab('manage'); setFormError(''); }}
                 className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-all ${
                   activeTab === 'manage'
-                  ? 'bg-[#2D142C] text-white shadow-sm'
+                  ? 'bg-[#241329] text-white shadow-sm'
                   : 'text-zinc-600 hover:bg-pink-100/40'
                 }`}
               >
@@ -492,7 +503,7 @@ export default function AdminPanel({
 
                     {/* Image Selector & Uploader Section */}
                     <div className="space-y-3 pt-2">
-                      <label className="block text-[10px] font-bold text-[#2D142C] uppercase tracking-widest">Product Representation Image</label>
+                      <label className="block text-[10px] font-bold text-[#241329] uppercase tracking-widest">Product Representation Image</label>
                       
                       {/* Tabs for Image Input Mode */}
                       <div className="flex gap-2 bg-pink-50 p-1 rounded-xl text-xs">
@@ -579,7 +590,7 @@ export default function AdminPanel({
                           ) : (
                             <div className="space-y-2">
                               <Upload className="w-8 h-8 text-pink-400 mx-auto" />
-                              <p className="text-xs font-bold text-[#2D142C]">Drag & drop product photo here</p>
+                              <p className="text-xs font-bold text-[#241329]">Drag & drop product photo here</p>
                               <p className="text-[10px] text-zinc-400">or click to browse your files (PNG, JPG)</p>
                             </div>
                           )}

@@ -147,11 +147,12 @@ export default function App() {
   };
 
   // --- Admin access control ---
-  // NOTE: This is a client-side-only gate meant to stop casual/accidental access
-  // (e.g. someone clicking the Admin button). It is NOT real security: anyone who
-  // reads the bundled JS can find ADMIN_PASSWORD. For a real deployment, move
-  // product management behind a server with proper authentication (sessions,
-  // hashed passwords, etc.) instead of trusting the browser.
+  // NOTE: This is a client-side-only gate meant to stop casual/accidental access.
+  // There is no visible "Admin" button on the storefront on purpose — access is
+  // only via the Ctrl/Cmd+Shift+A shortcut below. This is still NOT real security:
+  // anyone who reads the bundled JS can find ADMIN_PASSWORD or the shortcut itself.
+  // For a real deployment, move product management behind a server with proper
+  // authentication (sessions, hashed passwords, etc.) instead of trusting the browser.
   const requestAdminAccess = () => {
     if (isAdminAuthed) {
       setIsAdminOpen(true);
@@ -181,6 +182,21 @@ export default function App() {
     sessionStorage.removeItem('sparkle_admin_authed');
     setIsAdminOpen(false);
   };
+
+  // Hidden entry point: Ctrl/Cmd + Shift + A opens the admin login (or the
+  // dashboard directly if already authed this session). No button is shown
+  // anywhere in the UI for this.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isShortcut = (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a');
+      if (isShortcut) {
+        e.preventDefault();
+        requestAdminAccess();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAdminAuthed]);
 
   // Auto-dismiss notification toast
   useEffect(() => {
@@ -427,9 +443,6 @@ export default function App() {
         setIsSearchOpen={setIsSearchOpen}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onAdminOpen={requestAdminAccess}
-        isAdminAuthed={isAdminAuthed}
-        onAdminLogout={handleAdminLogout}
       />
 
       {/* Main Sections */}
@@ -659,6 +672,7 @@ export default function App() {
       <AdminPanel 
         isOpen={isAdminOpen && isAdminAuthed}
         onClose={() => setIsAdminOpen(false)}
+        onLogout={handleAdminLogout}
         products={products}
         onAddProduct={handleAddProduct}
         onUpdateProduct={handleUpdateProduct}
@@ -1230,10 +1244,7 @@ function Header({
   isSearchOpen,
   setIsSearchOpen,
   searchQuery,
-  setSearchQuery,
-  onAdminOpen,
-  isAdminAuthed,
-  onAdminLogout
+  setSearchQuery
 }: { 
   cartItemCount: number; 
   onCartOpen: () => void;
@@ -1243,9 +1254,6 @@ function Header({
   setIsSearchOpen: (open: boolean) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  onAdminOpen: () => void;
-  isAdminAuthed: boolean;
-  onAdminLogout: () => void;
 }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1319,24 +1327,8 @@ function Header({
             </button>
           </div>
 
-          <button 
-            onClick={onAdminOpen}
-            className="p-2 text-zinc-700 hover:text-hot-pink rounded-full hover:bg-pink-50/50 transition-colors flex items-center gap-1 px-2.5 py-1 border border-pink-100 bg-pink-50/20 text-[10px] font-bold uppercase tracking-widest transition-all"
-            title="Admin Dashboard"
-          >
-            <ShieldCheck className="w-4 h-4 text-hot-pink" />
-            <span className="hidden sm:inline">Admin</span>
-          </button>
-
-          {isAdminAuthed && (
-            <button
-              onClick={onAdminLogout}
-              className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-hot-pink transition-colors"
-              title="Log out of admin"
-            >
-              Log Out
-            </button>
-          )}
+          {/* Admin access is intentionally not exposed here for regular visitors.
+              It's reachable via a keyboard shortcut (Ctrl/Cmd + Shift + A). */}
 
           {/* Interactive Shopping Cart Icon Trigger */}
           <button 
@@ -1384,12 +1376,6 @@ function Header({
                   <a href="#makeup" onClick={(e) => { setIsMobileMenuOpen(false); onNavClick(e, 'Makeup'); }} className="hover:text-hot-pink transition-colors">Makeup</a>
                   <a href="#body-care" onClick={(e) => { setIsMobileMenuOpen(false); onNavClick(e, 'Body Care'); }} className="hover:text-hot-pink transition-colors">Body Care</a>
                   <a href="#featured" onClick={(e) => { setIsMobileMenuOpen(false); onNavClick(e, 'All'); }} className="hover:text-hot-pink transition-colors">Featured Shop</a>
-                  <button 
-                    onClick={() => { setIsMobileMenuOpen(false); onAdminOpen(); }} 
-                    className="hover:text-hot-pink text-left font-serif text-xl flex items-center gap-2 transition-colors border-t border-pink-100 pt-4"
-                  >
-                    <ShieldCheck className="w-5 h-5 text-hot-pink" /> Sparkle Admin Portal
-                  </button>
                 </div>
               </div>
 
